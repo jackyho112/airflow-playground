@@ -5,7 +5,9 @@ from airflow.contrib.sensors.file_sensor import FileSensor
 import airflow.operators.python_operator import PythonOperator
 import airflow.operators.bash_operator import BashOperator
 from airflow.operators.hive_operator import HiveOperator
+from airflow.operators.email_operator import EmailOperator
 from airflow.contrib.operators.spark_submit_operator import SparkSubmitOperator
+from airflow.operators.slack_operator import SlackAPIPostOperator
 import json
 import csv
 import requests
@@ -93,9 +95,32 @@ with DAG(
             STORED AS TEXTFILE
         """
     )
+
     forex_processing = SparkSubmitOperator(
         task_id="forex_processing",
         conn_id="spark_conn",
         application="/usr/local/airflow/dags/scripts/forex_processing.py",
         verbose=False
     )
+
+    sending_email_notification = EmailOperator(
+        task_id="sending_email",
+        to="airflow_course@yopmail.com",
+        subject="forex_data_pipeline",
+        html_content="<h3>Succeeded!</h3>"
+    )
+
+    sending_slack_notification = SlackAPIPostOperator(
+        task_id="sending_slack",
+        token="abc",
+        username="airflow",
+        text="DAG forex_data_pipeline: DONE",
+        channel="#airflow-exploit"
+    )
+
+    is_forex_rates_available >> is_forex_currencies_file_available
+    is_forex_currencies_file_available >> downloading_rates
+    downloading_rates >> saving_rates
+    saving_rates >> creating_forex_rates_table
+    creating_forex_rates_table >> forex_processing
+    forex_processing >> [sending_email_notification, sending_slack_notification]
